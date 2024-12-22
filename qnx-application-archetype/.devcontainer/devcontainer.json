@@ -1,0 +1,34 @@
+{
+    "name": "QNX 8 SDK DevContainer",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "qnx.qnx-vscode",
+                "twxs.cmake",
+                "ms-vscode.hexeditor",
+                "wayou.vscode-todo-highlight",
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "TheQtCompany.qt"
+            ]
+        },
+        "settings": {
+            "terminal.integrated.shell.linux": "/bin/bash"
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.local/sdks/qnx-800-raspberrypi4b/,target=/opt/qnx-800-raspberrypi4b,type=bind"
+    ],
+    "overrideCommand": false,
+	"privileged": true,
+    "postCreateCommand": "bash -c 'source /opt/qnx-800-raspberrypi4b/qnxsdp-env.sh'",
+    "runArgs": [
+        "--privileged",
+        "--net=host",
+        "--volume=/sys/fs/cgroup:/sys/fs/cgroup:ro"
+    ]
+}

@@ -1,0 +1,582 @@
+################################################################################################
+##
+## Build file para un sistema operativo QNX ejecutándose en la máquina QEMU 'virt' con DRM VirtIO
+##
+################################################################################################
+
+[-optional]
+[+keeplinked]
+[image=0x80000]
+[virtual=aarch64le,raw -compress] boot = {
+    # Iniciar con el startup para VirtIO
+    startup-qemu-virt -v -D pl011 -u bootm -r 0,4096,1
+
+    # Configurar PATH y LD_LIBRARY_PATH
+    PATH=/proc/boot:/usr/bin:/usr/xbin:/usr/libexec:/app/bin
+    LD_LIBRARY_PATH=/usr/lib:/app/lib:/usr/lib:/usr/lib/pci
+    [+keeplinked uid=0 gid=0 perms=0700] CONFIG_PATH=/proc/boot:/usr/etc procnto-smp-instr -v -mr -d 022 -u 066  
+}
+
+[+script] startup-script = {
+    SYSNAME=nto
+    TERM=qansi
+    ENV=/usr/etc/profile
+    PATH=/proc/boot:/usr/bin:/usr/xbin:/usr/libexec:/app/bin 
+    LD_LIBRARY_PATH=/usr/lib:/app/lib:/usr/lib:/usr/lib/pci:/usr/lib/pam_modules:/usr/lib/graphics
+
+    ############################################################################################
+    ## Inicializar recursos del sistema
+    ############################################################################################
+    pipe
+
+    display_msg "[*] Iniciando QNX Neutrino OS en la plataforma VirtIO QEMU"
+
+    # Inicializar daemons del sistema
+    slogger2
+    dumper
+    mqueue
+    random
+
+    #######################################################################
+    ## Driver de Consola SERIAL (PL011 o UART genérico emulado por VirtIO)
+    #######################################################################
+    display_msg "[*] Iniciando driver serial (/dev/ser1)"
+    # Ajusta la dirección de memoria y IRQ según tu configuración de QEMU 'virt' y BSP
+    devc-virtio -e -b115200 -c48000000 -e -F -u1 0x09000000,33
+    waitfor /dev/ser1
+
+    #######################################################################
+    ## Iniciar DRM VirtIO y screen
+    #######################################################################
+    display_msg "[*] Iniciando DRM (VirtIO) y screen..."
+    waitfor /dev/drm
+
+    # Usar el archivo de configuración para display virtual
+    screen -U 1000:1000 -c /usr/lib/graphics/graphics-virtual-display.conf >/dev/null 2>&1
+    echo drop_privileges > /dev/screen/command
+    waitfor /dev/screen/
+
+    #######################################################################
+    ## Networking con virtio-net
+    #######################################################################
+    display_msg "[*] Iniciando networking..."
+    # Inicializar el driver de red VirtIO
+    devb-virtio
+    io-sock -m phy -m fdt -m phy_fdt -d genet -m pci -d em -d ix -d re -m usb -d axe -d axge -d cdce -d smsc 
+
+    # Alternativamente, usar DHCP:
+    display_msg "[*] Iniciando Cliente DHCP..."
+    dhcpcd -bqq vtnet0
+
+    #######################################################################
+    ## SSH daemon (opcional si se incluye ssh)
+    #######################################################################
+    ksh /proc/boot/.ssh-server.sh
+
+    #######################################################################
+    ## Lanzar una aplicación gráfica de prueba (vkcube)
+    #######################################################################
+    display_msg "[*] QNX Neutrino OS (VirtIO) iniciado exitosamente!"
+    display_msg "[*] Iniciando ejemplos gráficos..."
+    [+session] vkcube &
+
+    #######################################################################
+    ## Iniciar la consola shell
+    #######################################################################
+    reopen /dev/ser1
+    display_msg "[*] Iniciando shell..."
+
+    [+session] ksh &
+}
+
+################################
+### Estructura básica del filesystem ###
+################################
+[uid=0 gid=0 dperms=0555 perms=0555]
+[type=dir] /
+[type=dir] /usr
+[type=dir] /usr/boot
+[type=dir] /usr/bin
+[type=dir] /usr/lib
+[type=dir] /usr/lib/pci
+[type=dir] /usr/lib/pam_modules
+[type=dir] /usr/lib/graphics
+[type=dir] /usr/libexec
+[type=dir] /usr/xbin
+[type=dir] /usr/etc
+[type=dir] /app
+[type=dir] /app/bin
+[type=dir] /app/lib
+[type=dir] /app/etc
+[type=dir] /dev
+[type=dir] /var
+[type=dir] /var/db
+
+[type=link] /boot=/usr/boot
+[type=link] /bin=/usr/bin
+[type=link] /lib=/usr/lib
+[type=link] /etc=/usr/etc
+[type=link] /sbin=/usr/xbin
+[type=link] /tmp=/dev/shmem
+[type=link] /var/log=/dev/shmem
+[type=link] /var/run=/dev/shmem
+[type=link] /var/tmp=/dev/shmem
+[type=link] /usr/etc/ssh=/dev/shmem
+[type=link] /usr/bin/init=/proc/boot/startup-script
+[type=link] /dev/console=/dev/ser1
+
+################################
+### Bibliotecas y herramientas básicas ###
+################################
+[uid=0 gid=0 dperms=0555 perms=0555]
+/usr/lib/libc.so=${QNX_TARGET}/${PROCESSOR}/lib/libc.so
+/usr/lib/libm.so=${QNX_TARGET}/${PROCESSOR}/lib/libm.so
+/usr/lib/libz.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libz.so
+/usr/lib/libgcc_s.so.1=${QNX_TARGET}/${PROCESSOR}/lib/libgcc_s.so.1
+/usr/lib/libcam.so.2=${QNX_TARGET}/${PROCESSOR}/lib/libcam.so.2
+/usr/lib/libfsnotify.so.1=${QNX_TARGET}/${PROCESSOR}/lib/libfsnotify.so.1
+
+/usr/lib/libbacktrace.so=${QNX_TARGET}/${PROCESSOR}/lib/libbacktrace.so
+/usr/lib/libc++.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libc++.so
+/usr/lib/libiconv.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libiconv.so
+/usr/lib/libintl.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libintl.so
+/usr/lib/libpanelw.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libpanelw.so
+/usr/lib/libpci.so=${QNX_TARGET}/${PROCESSOR}/lib/libpci.so
+/usr/lib/libqh.so=${QNX_TARGET}/${PROCESSOR}/lib/libqh.so
+/usr/lib/libregex.so=${QNX_TARGET}/${PROCESSOR}/lib/libregex.so
+/usr/lib/libsecpol.so=${QNX_TARGET}/${PROCESSOR}/lib/libsecpol.so
+/usr/lib/libslog2parse.so=${QNX_TARGET}/${PROCESSOR}/lib/libslog2parse.so
+/usr/lib/libslog2shim.so=${QNX_TARGET}/${PROCESSOR}/lib/libslog2shim.so
+/usr/lib/libslog2.so=${QNX_TARGET}/${PROCESSOR}/lib/libslog2.so
+/usr/lib/libtracelog.so=${QNX_TARGET}/${PROCESSOR}/lib/libtracelog.so
+
+/usr/lib/libedit.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libedit.so
+/usr/lib/libexpat.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libexpat.so
+/usr/lib/libfdt.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libfdt.so
+/usr/lib/librpc.so.2=${QNX_TARGET}/${PROCESSOR}/usr/lib/librpc.so.2
+/usr/lib/libxo.so.0=${QNX_TARGET}/${PROCESSOR}/usr/lib/libxo.so.0
+
+/usr/lib/libsocket.so=${QNX_TARGET}/${PROCESSOR}/lib/libsocket.so
+/usr/lib/libjail.so=${QNX_TARGET}/${PROCESSOR}/lib/libjail.so
+
+/usr/lib/libcrypto.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libcrypto.so
+/usr/lib/libncursesw.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libncursesw.so
+/usr/lib/libqcrypto.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libqcrypto.so
+/usr/lib/libssl.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libssl.so
+
+/usr/lib/libpam.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/libpam.so
+/usr/lib/pam_modules/pam_deny.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_deny.so
+/usr/lib/pam_modules/pam_echo.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_echo.so
+/usr/lib/pam_modules/pam_exec.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_exec.so
+/usr/lib/pam_modules/pam_group.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_group.so
+/usr/lib/pam_modules/pam_permit.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_permit.so
+/usr/lib/pam_modules/pam_qnx.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_qnx.so
+/usr/lib/pam_modules/pam_rootok.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_rootok.so
+/usr/lib/pam_modules/pam_secpol.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_secpol.so
+/usr/lib/pam_modules/pam_self.so=${QNX_TARGET}/${PROCESSOR}/usr/lib/pam_self.so
+
+/usr/lib/ldqnx-64.so.2=${QNX_TARGET}/${PROCESSOR}/usr/lib/ldqnx-64.so.2
+
+################################
+### Archivos del CLI y enlaces ###
+################################
+[uid=0 gid=0 dperms=0555 perms=0555]
+/usr/bin/toybox=${QNX_TARGET}/${PROCESSOR}/usr/bin/toybox
+
+[type=link] /usr/bin/cat=/usr/bin/toybox
+[type=link] /usr/bin/chmod=/usr/bin/toybox
+[type=link] /usr/bin/cp=/usr/bin/toybox
+[type=link] /usr/bin/dd=/usr/bin/toybox
+[type=link] /usr/bin/echo=/usr/bin/toybox
+[type=link] /usr/bin/ln=/usr/bin/toybox
+[type=link] /usr/bin/ls=/usr/bin/toybox
+[type=link] /usr/bin/mkdir=/usr/bin/toybox
+[type=link] /usr/bin/mv=/usr/bin/toybox
+[type=link] /usr/bin/pwd=/usr/bin/toybox
+[type=link] /usr/bin/rm=/usr/bin/toybox
+[type=link] /usr/bin/sed=/usr/bin/toybox
+[type=link] /usr/bin/uname=/usr/bin/toybox
+[type=link] /usr/bin/ascii=/usr/bin/toybox
+[type=link] /usr/bin/base64=/usr/bin/toybox
+[type=link] /usr/bin/basename=/usr/bin/toybox
+[type=link] /usr/bin/bc=/usr/bin/toybox
+[type=link] /usr/bin/bunzip2=/usr/bin/toybox
+[type=link] /usr/bin/bzcat=/usr/bin/toybox
+[type=link] /usr/bin/cal=/usr/bin/toybox
+[type=link] /usr/bin/chgrp=/usr/bin/toybox
+[type=link] /usr/bin/chown=/usr/bin/toybox
+[type=link] /usr/bin/cksum=/usr/bin/toybox
+[type=link] /usr/bin/clear=/usr/bin/toybox
+[type=link] /usr/bin/cmp=/usr/bin/toybox
+[type=link] /usr/bin/comm=/usr/bin/toybox
+[type=link] /usr/bin/cpio=/usr/bin/toybox
+[type=link] /usr/bin/crc32=/usr/bin/toybox
+[type=link] /usr/bin/cut=/usr/bin/toybox
+[type=link] /usr/bin/date=/usr/bin/toybox
+[type=link] /usr/bin/diff=/usr/bin/toybox
+[type=link] /usr/bin/dirname=/usr/bin/toybox
+[type=link] /usr/bin/dos2unix=/usr/bin/toybox
+[type=link] /usr/bin/du=/usr/bin/toybox
+[type=link] /usr/bin/egrep=/usr/bin/toybox
+[type=link] /usr/bin/env=/usr/bin/toybox
+[type=link] /usr/bin/expand=/usr/bin/toybox
+[type=link] /usr/bin/expr=/usr/bin/toybox
+[type=link] /usr/bin/false=/usr/bin/toybox
+[type=link] /usr/bin/fgrep=/usr/bin/toybox
+[type=link] /usr/bin/file=/usr/bin/toybox
+[type=link] /usr/bin/find=/usr/bin/toybox
+[type=link] /usr/bin/grep=/usr/bin/toybox
+[type=link] /usr/bin/groups=/usr/bin/toybox
+[type=link] /usr/bin/gunzip=/usr/bin/toybox
+[type=link] /usr/bin/gzip=/usr/bin/toybox
+[type=link] /usr/bin/head=/usr/bin/toybox
+[type=link] /usr/bin/id=/usr/bin/toybox
+[type=link] /usr/bin/install=/usr/bin/toybox
+[type=link] /usr/bin/link=/usr/bin/toybox
+[type=link] /usr/bin/logname=/usr/bin/toybox
+[type=link] /usr/bin/md5sum=/usr/bin/toybox
+[type=link] /usr/bin/mkfifo=/usr/bin/toybox
+[type=link] /usr/bin/mktemp=/usr/bin/toybox
+[type=link] /usr/bin/more=/usr/bin/toybox
+[type=link] /usr/bin/nl=/usr/bin/toybox
+[type=link] /usr/bin/nohup=/usr/bin/toybox
+[type=link] /usr/bin/od=/usr/bin/toybox
+[type=link] /usr/bin/paste=/usr/bin/toybox
+[type=link] /usr/bin/patch=/usr/bin/toybox
+[type=link] /usr/bin/printenv=/usr/bin/toybox
+[type=link] /usr/bin/printf=/usr/bin/toybox
+[type=link] /usr/bin/readlink=/usr/bin/toybox
+[type=link] /usr/bin/realpath=/usr/bin/toybox
+[type=link] /usr/bin/rmdir=/usr/bin/toybox
+[type=link] /usr/bin/seq=/usr/bin/toybox
+[type=link] /usr/bin/sha1sum=/usr/bin/toybox
+[type=link] /usr/bin/sleep=/usr/bin/toybox
+[type=link] /usr/bin/sort=/usr/bin/toybox
+[type=link] /usr/bin/split=/usr/bin/toybox
+[type=link] /usr/bin/stat=/usr/bin/toybox
+[type=link] /usr/bin/strings=/usr/bin/toybox
+[type=link] /usr/bin/tail=/usr/bin/toybox
+[type=link] /usr/bin/tar=/usr/bin/toybox
+[type=link] /usr/bin/tee=/usr/bin/toybox
+[type=link] /usr/bin/test=/usr/bin/toybox
+[type=link] /usr/bin/time=/usr/bin/toybox
+[type=link] /usr/bin/timeout=/usr/bin/toybox
+[type=link] /usr/bin/touch=/usr/bin/toybox
+[type=link] /usr/bin/true=/usr/bin/toybox
+[type=link] /usr/bin/truncate=/usr/bin/toybox
+[type=link] /usr/bin/tty=/usr/bin/toybox
+[type=link] /usr/bin/uniq=/usr/bin/toybox
+[type=link] /usr/bin/unix2dos=/usr/bin/toybox
+[type=link] /usr/bin/unlink=/usr/bin/toybox
+[type=link] /usr/bin/uudecode=/usr/bin/toybox
+[type=link] /usr/bin/uuencode=/usr/bin/toybox
+[type=link] /usr/bin/uuidgen=/usr/bin/toybox
+[type=link] /usr/bin/wc=/usr/bin/toybox
+[type=link] /usr/bin/which=/usr/bin/toybox
+[type=link] /usr/bin/whoami=/usr/bin/toybox
+[type=link] /usr/bin/xargs=/usr/bin/toybox
+[type=link] /usr/bin/xxd=/usr/bin/toybox
+[type=link] /usr/bin/yes=/usr/bin/toybox
+[type=link] /usr/bin/zcat=/usr/bin/toybox
+
+[uid=0 gid=0 perms=4755]
+/usr/bin/login=${QNX_TARGET}/${PROCESSOR}/bin/login
+/usr/bin/su=${QNX_TARGET}/${PROCESSOR}/bin/su
+/usr/bin/passwd=${QNX_TARGET}/${PROCESSOR}/usr/bin/passwd
+/usr/bin/confstr=${QNX_TARGET}/${PROCESSOR}/bin/confstr
+/usr/bin/df=${QNX_TARGET}/${PROCESSOR}/bin/df
+/usr/bin/hostname=${QNX_TARGET}/${PROCESSOR}/bin/hostname
+/usr/bin/kill=${QNX_TARGET}/${PROCESSOR}/bin/kill
+/usr/bin/ksh=${QNX_TARGET}/${PROCESSOR}/bin/ksh
+/usr/bin/mount=${QNX_TARGET}/${PROCESSOR}/bin/mount
+/usr/bin/on=${QNX_TARGET}/${PROCESSOR}/bin/on
+/usr/bin/pidin=${QNX_TARGET}/${PROCESSOR}/bin/pidin
+/usr/bin/slay=${QNX_TARGET}/${PROCESSOR}/bin/slay
+/usr/bin/sync=${QNX_TARGET}/${PROCESSOR}/bin/sync
+/usr/bin/umount=${QNX_TARGET}/${PROCESSOR}/bin/umount
+/usr/bin/waitfor=${QNX_TARGET}/${PROCESSOR}/bin/waitfor
+/usr/libexec/mqueue=${QNX_TARGET}/${PROCESSOR}/sbin/mqueue
+/usr/libexec/pipe=${QNX_TARGET}/${PROCESSOR}/sbin/pipe
+/usr/bin/shutdown=${QNX_TARGET}/${PROCESSOR}/sbin/shutdown
+/usr/bin/getconf=${QNX_TARGET}/${PROCESSOR}/usr/bin/getconf
+/usr/bin/hd=${QNX_TARGET}/${PROCESSOR}/usr/bin/hd
+/usr/bin/ldd=${QNX_TARGET}/${PROCESSOR}/usr/bin/ldd
+/usr/bin/setconf=${QNX_TARGET}/${PROCESSOR}/usr/bin/setconf
+/usr/bin/top=${QNX_TARGET}/${PROCESSOR}/usr/bin/top
+/usr/bin/use=${QNX_TARGET}/${PROCESSOR}/usr/bin/use
+/usr/libexec/tracelogger=${QNX_TARGET}/${PROCESSOR}/usr/sbin/tracelogger
+
+[uid=0 gid=0 dperms=0555 perms=0555]
+
+/usr/bin/netstat=${QNX_TARGET}/${PROCESSOR}/usr/bin/netstat
+/usr/bin/sockstat=${QNX_TARGET}/${PROCESSOR}/usr/bin/sockstat
+/usr/bin/vmstat=${QNX_TARGET}/${PROCESSOR}/usr/bin/vmstat
+/usr/bin/ifconfig=${QNX_TARGET}/${PROCESSOR}/sbin/ifconfig
+/usr/bin/pfctl=${QNX_TARGET}/${PROCESSOR}/sbin/pfctl
+/usr/bin/route=${QNX_TARGET}/${PROCESSOR}/sbin/route
+/usr/bin/sysctl=${QNX_TARGET}/${PROCESSOR}/sbin/sysctl
+/usr/bin/arp=${QNX_TARGET}/${PROCESSOR}/usr/sbin/arp
+/usr/bin/devctl=${QNX_TARGET}/${PROCESSOR}/usr/sbin/devctl
+/usr/bin/devinfo=${QNX_TARGET}/${PROCESSOR}/usr/sbin/devinfo
+/usr/bin/if_up=${QNX_TARGET}/${PROCESSOR}/usr/sbin/if_up
+/usr/bin/ifmcstat=${QNX_TARGET}/${PROCESSOR}/usr/sbin/ifmcstat
+/usr/bin/ifwatchd=${QNX_TARGET}/${PROCESSOR}/usr/sbin/ifwatchd
+/usr/bin/ip6addrctl=${QNX_TARGET}/${PROCESSOR}/usr/sbin/ip6addrctl
+/usr/bin/ndp=${QNX_TARGET}/${PROCESSOR}/usr/sbin/ndp
+/usr/bin/tcpdump=${QNX_TARGET}/${PROCESSOR}/usr/sbin/tcpdump
+
+################################
+### Archivos de Daemons del Sistema ###
+################################
+/usr/libexec/dhcpcd=${QNX_TARGET}/${PROCESSOR}/sbin/dhcpcd
+/usr/libexec/sshd=${QNX_TARGET}/${PROCESSOR}/usr/sbin/sshd
+/usr/libexec/slogger2=${QNX_TARGET}/${PROCESSOR}/bin/slogger2
+/usr/libexec/dumper=${QNX_TARGET}/${PROCESSOR}/usr/sbin/dumper
+/usr/libexec/random=${QNX_TARGET}/${PROCESSOR}/usr/sbin/random
+/usr/libexec/sftp-server=${QNX_TARGET}/${PROCESSOR}/usr/libexec/sftp-server
+
+################################
+### Archivos de Drivers ###
+################################
+/usr/bin/pci-tool=${QNX_TARGET}/${PROCESSOR}/usr/sbin/pci-tool
+/usr/bin/devb-virtio=${QNX_TARGET}/${PROCESSOR}/sbin/devb-virtio
+
+/usr/lib/dll/devu-hcd-xhci.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/devu-hcd-xhci.so
+/usr/lib/dll/qcrypto-openssl-3.so=qcrypto-openssl-3.so
+/usr/lib/dll/mods-phy.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/mods-phy.so
+/usr/lib/dll/mods-pci.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/mods-pci.so
+/usr/lib/dll/mods-usb.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/mods-usb.so
+/usr/lib/dll/mods-fdt.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/mods-fdt.so
+/usr/lib/dll/mods-phy_fdt.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/mods-phy_fdt.so
+
+/usr/libexec/devc-virtio=${QNX_TARGET}/${PROCESSOR}/sbin/devc-virtio
+/usr/libexec/devb-virtio=${QNX_TARGET}/${PROCESSOR}/sbin/devb-virtio
+/usr/libexec/devf-ram=${QNX_TARGET}/${PROCESSOR}/sbin/devf-ram
+/usr/libexec/pci-server=${QNX_TARGET}/${PROCESSOR}/sbin/pci-server
+/usr/libexec/io-sock=${QNX_TARGET}/${PROCESSOR}/sbin/io-sock
+/usr/libexec/fs-nfs3=${QNX_TARGET}/${PROCESSOR}/usr/sbin/fs-nfs3
+/usr/libexec/io-usb-otg=${QNX_TARGET}/${PROCESSOR}/sbin/io-usb-otg
+
+/usr/lib/pci/pci_hw-bcm2711-rpi4.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_hw-bcm2711-rpi4.so
+/usr/lib/pci/pci_bkwd_compat.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_bkwd_compat.so
+/usr/lib/pci/pci_cap-0x01.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x01.so
+/usr/lib/pci/pci_cap-0x04.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x04.so
+/usr/lib/pci/pci_cap-0x05.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x05.so
+/usr/lib/pci/pci_cap-0x07.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x07.so
+/usr/lib/pci/pci_cap-0x09-ffffffff.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x09-ffffffff.so
+/usr/lib/pci/pci_cap-0x0d.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x0d.so
+/usr/lib/pci/pci_cap-0x10-16c3abcd.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x10-16c3abcd.so
+/usr/lib/pci/pci_cap-0x10-19570400.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x10-19570400.so
+/usr/lib/pci/pci_cap-0x10.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x10.so
+#/usr/lib/pci/pci_cap-0x11-ffffffff.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x11-fffffffff.so
+/usr/lib/pci/pci_cap-0x11.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x11.so
+/usr/lib/pci/pci_cap-0x12.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x12.so
+/usr/lib/pci/pci_cap-0x13.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_cap-0x13.so
+/usr/lib/pci/pci_debug.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_debug.so
+/usr/lib/pci/pci_debug2.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_debug2.so
+/usr/lib/pci/pci_server-buscfg-generic.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-buscfg-generic.so
+/usr/lib/pci/pci_server-buscfg-hotplug.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-buscfg-hotplug.so
+/usr/lib/pci/pci_server-buscfg2-generic.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-buscfg2-generic.so
+/usr/lib/pci/pci_server-buscfg2-hotplug.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-buscfg2-hotplug.so
+/usr/lib/pci/pci_server-enable_features.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-enable_features.so
+/usr/lib/pci/pci_server-event_handler.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-event_handler.so
+/usr/lib/pci/pci_server-namespace.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_server-namespace.so
+/usr/lib/pci/pci_slog.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_slog.so
+/usr/lib/pci/pci_slog2.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_slog2.so
+/usr/lib/pci/pci_strings.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pci_strings.so
+/usr/lib/pci/pcie_xcap-0x0001.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pcie_xcap-0x0001.so
+/usr/lib/pci/pcie_xcap-0x0003.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pcie_xcap-0x0003.so
+/usr/lib/pci/pcie_xcap-0x000b-ffffffff.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pcie_xcap-0x000b-ffffffff.so
+/usr/lib/pci/pcie_xcap-0x0015.so=${QNX_TARGET}/${PROCESSOR}/lib/dll/pci/pcie_xcap-0x0015.so
+
+################################
+### Stack Gráfico para QNX   ###
+################################
+
+/app/bin/gles2-gears=${QNX_TARGET}/${PROCESSOR}/usr/bin/gles2-gears
+/app/bin/gles2-maze=${QNX_TARGET}/${PROCESSOR}/usr/bin/gles2-maze
+/app/bin/gles2-teapot=${QNX_TARGET}/${PROCESSOR}/usr/bin/gles2-teapot
+/app/bin/gles3-gears=${QNX_TARGET}/${PROCESSOR}/usr/bin/gles3-gears
+/app/bin/vg-tiger=${QNX_TARGET}/${PROCESSOR}/usr/bin/vg-tiger
+/app/bin/vk-fsray=${QNX_TARGET}/${PROCESSOR}/usr/bin/vk-fsray
+/app/bin/vk-gears=${QNX_TARGET}/${PROCESSOR}/usr/bin/vk-gears
+/app/bin/vk-maze=${QNX_TARGET}/${PROCESSOR}/usr/bin/vk-maze
+/app/bin/vk-teapot=${QNX_TARGET}/${PROCESSOR}/usr/bin/vk-teapot
+/app/bin/vkcube=${QNX_TARGET}/${PROCESSOR}/usr/bin/vkcube
+
+/usr/bin/cl10-pi=${QNX_TARGET}/${PROCESSOR}/usr/bin/cl10-pi
+/usr/bin/cl11-ray=${QNX_TARGET}/${PROCESSOR}/usr/bin/cl11-ray
+/usr/bin/clinfo=${QNX_TARGET}/${PROCESSOR}/usr/bin/clinfo
+/usr/bin/egl-configs=${QNX_TARGET}/${PROCESSOR}/usr/bin/egl-configs
+/usr/bin/events=${QNX_TARGET}/${PROCESSOR}/usr/bin/events
+/usr/bin/screenshot=${QNX_TARGET}/${PROCESSOR}/usr/bin/screenshot
+/usr/bin/sharewin=${QNX_TARGET}/${PROCESSOR}/usr/bin/sharewin
+/usr/bin/sw-vsync=${QNX_TARGET}/${PROCESSOR}/usr/bin/sw-vsync
+
+/usr/bin/vulkaninfo=${QNX_TARGET}/${PROCESSOR}/usr/bin/vulkaninfo
+/usr/bin/win-vsync=${QNX_TARGET}/${PROCESSOR}/usr/bin/win-vsync
+/usr/libexec/screen=${QNX_TARGET}/${PROCESSOR}/sbin/screen
+
+/usr/share/screen/graphics-headless.conf=${QNX_TARGET}/usr/share/screen/graphics-headless.conf
+/usr/share/screen/graphics-virtual-display.conf=${QNX_TARGET}/usr/share/screen/graphics-virtual-display.conf
+
+/usr/lib/libdrm.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libdrm.so.1
+/usr/lib/libscrmem.so.1=${QNX_TARGET}/${PROCESSOR}/lib/libscrmem.so.1
+/usr/lib/libmemobj.so.1=${QNX_TARGET}/${PROCESSOR}/lib/libmemobj.so.1
+/usr/lib/libEGL.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libEGL.so.1
+/usr/lib/libGLESv2.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libGLESv2.so.1
+/usr/lib/libOpenCL.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libOpenCL.so.1
+/usr/lib/libOpenVG.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libOpenVG.so.1
+/usr/lib/libOpenVGU.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libOpenVGU.so.1
+/usr/lib/libscreen.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libscreen.so.1
+/usr/lib/libswblit.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libswblit.so.1
+/usr/lib/libvulkan.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libvulkan.so.1
+/usr/lib/libWFD.so.1=${QNX_TARGET}/${PROCESSOR}/usr/lib/libWFD.so.1
+
+[type=link] /usr/lib/libdrm.so=/usr/lib/libdrm.so.1
+[type=link] /usr/lib/libhiddi.so=/usr/lib/libhiddi.so.1
+[type=link] /usr/lib/libscrmem.so=/usr/lib/libscrmem.so.1
+[type=link] /usr/lib/libmemobj.so=/usr/lib/libmemobj.so.1
+[type=link] /usr/lib/libEGL.so=/usr/liblibEGL.so.1
+[type=link] /usr/lib/libGLESv2.so=/usr/liblibGLESv2.so.1
+[type=link] /usr/lib/libOpenCL.so=/usr/liblibOpenCL.so.1
+[type=link] /usr/lib/libOpenVG.so=/usr/liblibOpenVG.so.1
+[type=link] /usr/lib/libOpenVGU.so=/usr/liblibOpenVGU.so.1
+[type=link] /usr/lib/libWFD.so=/usr/liblibWFD.so.1
+[type=link] /usr/lib/libscreen.so=/usr/liblibscreen.so.1
+[type=link] /usr/lib/libswblit.so=/usr/liblibswblit.so.1
+[type=link] /usr/lib/libvulkan.so=/usr/liblibvulkan.so.1
+
+# Incluir drm-virtio y screen
+#/usr/libexec/drm-virtio=${QNX_TARGET}/${PROCESSOR}/sbin/drm-virtio
+
+# Archivo de configuración para display virtual
+/usr/lib/graphics/graphics-virtual-display.conf=${QNX_TARGET}/usr/share/screen/graphics-virtual-display.conf
+
+################################
+### Script del Servidor SSH ###
+################################
+[perms=0744] .ssh-server.sh = {
+#!/bin/ksh
+
+## Crear claves SSH si no existen
+if [ ! -f /etc/ssh/ssh_host_rsa_key ]
+then
+    ssh-keygen -q -t rsa -N "" -f /etc/ssh/ssh_host_rsa_key
+fi
+
+if [ ! -f /etc/ssh/ssh_host_ecdsa_key ]
+then
+    ssh-keygen -q -t ecdsa -N "" -f /etc/ssh/ssh_host_ecdsa_key
+fi
+
+if [ ! -f /etc/ssh/ssh_host_ed25519_key ]
+then
+    ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/ssh_host_ed25519_key
+fi
+
+## Iniciar el daemon SSH
+echo "[*] Iniciando daemon SSH..."
+/usr/libexec/sshd -D
+}
+
+################################
+### Archivos de Configuración Básica ###
+################################
+
+[uid=0 gid=0 perms=0644] /usr/etc/profile = {
+export HOME=/tmp
+export PATH=/usr/boot:/usr/bin:/usr/xbin:/usr/libexec:/app/bin
+export LD_LIBRARY_PATH=/usr/lib:/app/lib:/usr/lib:/usr/lib/pci
+export PS1='$(printf "[%s@%s %s] $ " "$(whoami)" "$(hostname -s)" "$(basename "$PWD")")'
+}
+
+[uid=0 gid=0 perms=0644] /usr/etc/passwd = {
+root:x:0:0:Superuser:/tmp:/bin/ksh
+sshd:x:15:6:sshd:/var/chroot/sshd:/bin/false
+device:x:1000:1000:Device User:/tmp:/bin/ksh
+}
+
+[uid=0 gid=0 perms=0644] /usr/etc/group = {
+root:x:0:root
+sshd:*:1231323780:0:0
+device:x:1000
+}
+
+[uid=0 gid=0 perms=0644] /usr/etc/shadow = {
+root:@S@NKlWES1quMp1wmqugkUSnFEpPGn58kIs4wQOgDDNs06vimR+bbGPUKM+9P6jbFUzo3Rm+Qe5MS+17xKhwaeJEg==@Mjg5ZTJiMTM0YTRjYTE2ZGFjMDdhZTFlY2NlMDVmNmE=:1468494669:0:0
+sshd:x:6:
+device:@S@HZERXjgixvb3157FFeraShhvTVw+10ccUtVUVZbi0fUwpzlzBZFw5gHiFd1XHKit8D39Whe749XAY8fV4P5ANQ==@Y2ZlOTg3M2RhNTM4Y2M2ODY0OWZhODdiNDRkMmU5Nzg=:1468488235:0:0
+}
+
+[uid=0 gid=0 perms=0644] /usr/etc/spi/spi.conf = {
+# Ver spi-template.conf o la documentación de SDP para una descripción completa de los campos de configuración.
+
+[globals]
+verbose=5
+
+[bus]
+busno=0
+name=spi0
+base=0xfe204000
+irq=150
+input_clock=500000000
+bs=rpanic=48,tpanic=16
+dma_attach_opts=num_cbs=256,range_min=0,range_max=14,typed_mem=sysram&below1G
+dma_thld=4
+
+[dev]
+parent_busno=0
+devno=0
+name=dev0
+clock_rate=5000000
+cpha=1
+cpol=0
+bit_order=msb
+word_width=32
+idle_insert=1
+
+[dev]
+parent_busno=0
+devno=1
+name=dev1
+cpha=0
+cpol=1
+word_width=32
+clock_rate=5000000
+
+[bus]
+busno=3
+name=spi3
+base=0xfe204600
+irq=151
+input_clock=500000000
+
+[dev]
+parent_busno=3
+devno=0
+name=dev0
+cpha=0
+cpol=1
+word_width=8
+clock_rate=5000000
+}
+
+################################
+### Configuración PAM (opcional) ###
+################################
+[perms=0644] /usr/etc/pam.d/login = {
+auth required pam_unix.so
+account required pam_unix.so
+session required pam_unix.so
+}
+
+[perms=0644] /usr/etc/pam.d/passwd = {
+password required pam_unix.so
+}
+
+[perms=0644] /usr/etc/pam.d/su = {
+auth required pam_unix.so
+account required pam_unix.so
+session required pam_unix.so
+}

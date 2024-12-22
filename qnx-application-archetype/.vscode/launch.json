@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "configurations": [
+    {
+      "type": "qnx-gdb",
+      "request": "launch",
+      "name": "qnx launch",
+      "gdb": "gdb",
+      "program": "${command:qnx.autodetectBinary}",
+      "remotePath": "${workspaceFolderBasename}",
+      "qnxtarget": "default",
+      "upload": true,
+      "preLaunchTask": "${defaultBuildTask}",
+      "args": [
+        "predict_power_grid_load"
+      ]
+    },
+    {
+      "type": "qnx-gdb",
+      "request": "attach",
+      "name": "qnx attach",
+      "gdb": "gdb",
+      "program": "${command:qnx.autodetectBinary}",
+      "remotePath": "${workspaceFolderBasename}",
+      "qnxtarget": "default"
+    },
+    {
+      "type": "qnx-gdb",
+      "request": "launch",
+      "name": "ElectricalGridHardware",
+      "gdb": "gdb",
+      "program": "/workspaces/ElectricalGridHardware/build/ElectricalGripHardware",
+      "remotePath": "ElectricalGridHardware",
+      "qnxtarget": "default",
+      "upload": true,
+      "stopAtEntry": true,
+      "preLaunchTask": ""
+    }
+  ]
+}
