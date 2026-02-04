@@ -1,0 +1,26 @@
+{
+    "name": "Modern C++ Development Container",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "twxs.cmake",
+                "ms-vscode.hexeditor",
+                "wayou.vscode-todo-highlight",
+                "llvm-vs-code-extensions.vscode-clangd"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "cmake.configureOnOpen": false
+            }
+        }
+    },
+    "overrideCommand": false,
+    "privileged": false,
+    "postCreateCommand": "echo 'Modern C++ DevContainer ready!'"
+}

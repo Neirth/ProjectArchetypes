@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "modern-cpp-application",
+  "version": "1.0.0",
+  "description": "Modern C++ Application Archetype using vcpkg",
+  "homepage": "https://github.com/Neirth/ProjectArchetypes",
+  "license": "MIT",
+  "dependencies": [
+    "fmt",
+    "spdlog"
+  ]
+}
